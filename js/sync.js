@@ -313,6 +313,8 @@
     get lost() { return !!(auth && auth.lost); },
     get pending() { return outbox.length; },
     hasLocal: function () { var l = LS.get(K.local, null); return !!(l && Object.keys(l).length); },
+    // Voor het bijwerken van de agenda op de achtergrond (Android-app): waar en als wie er geschreven mag worden.
+    nativeAuth: function () { return isCloud() && auth && !auth.lost && auth.refresh ? { db: cfg.db, key: cfg.key, uid: auth.uid, refresh: auth.refresh } : null; },
     on: function (f) { listeners.push(f); },
     onError: function (f) { errFns.push(f); },
     init: init, put: put, multi: multi, id: id,

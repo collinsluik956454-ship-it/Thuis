@@ -469,7 +469,60 @@
         agCfg.hash = hash; lsSet("thuis.agenda", agCfg);
       } else if (Date.now() - cur.at > 30 * 60000) Store.put("agenda/" + agCfg.pid + "/at", Date.now());
       if (manual) toast(n === 1 ? "1 afspraak gedeeld" : n + " afspraken gedeeld");
+      bgSync();
     }, function (e) { agBusy = false; if (manual) toast("Agenda lezen lukte niet: " + errText(e)); });
+  }
+  // Achtergrond: de Android-app werkt de agenda zelf bij, ook als Thuis dicht is (vanaf app-versie 1.3).
+  var bg = { key: "", on: false, err: "" };
+  function bgCan() { var Pl = agPlug(); return !!(Pl && typeof Pl.achtergrond === "function"); }
+  function bgSync() {
+    var Pl = agPlug(), c = Store.nativeAuth();
+    if (!bgCan() || !c || !agCfg || !agCfg.pid) return;
+    var k = quickHash(JSON.stringify([c, agCfg.pid, agCfg.ids]));
+    if (k === bg.key) return;
+    bg.key = k;
+    Pl.achtergrond({ aan: true, db: c.db, key: c.key, uid: c.uid, refresh: c.refresh, pid: agCfg.pid, ids: agCfg.ids || [] }).then(function (r) {
+      bg.on = !!(r && r.achtergrond); bg.err = (r && r.fout) || ""; schedule();
+    }, function (e) { bg.key = ""; bg.on = false; bg.err = errText(e); schedule(); });
+  }
+  function bgOff() {
+    var Pl = agPlug(); bg.key = ""; bg.on = false; bg.err = "";
+    if (bgCan()) Pl.achtergrond({ aan: false }).catch(function () {});
+  }
+  function bgText() {
+    if (!agPlug() || !agCfg || !agCfg.pid) return "";
+    if (!bgCan()) return "Installeer de nieuwste app (1.3 of nieuwer), dan wordt je agenda ook bijgewerkt als Thuis dicht is.";
+    if (Store.mode !== "cloud") return "Bijwerken als Thuis dicht is, werkt alleen met een gezinsaccount.";
+    if (bg.on) return "Wordt ook bijgewerkt als Thuis dicht is (ongeveer elk kwartier en na een wijziging in je agenda)." + (bg.err ? " Laatste fout: " + bg.err : "");
+    return bg.err ? "Bijwerken als Thuis dicht is, lukte niet: " + bg.err : "";
+  }
+
+  /* ---------- nieuwe app-versie (Android-app) ---------- */
+  var upd = lsGet("thuis.upd", null), appInfo = null, updHide = false;
+  function checkUpdate() {
+    var A = plug("App");
+    if (!A || typeof A.getInfo !== "function") return;
+    A.getInfo().then(function (i) {
+      appInfo = { build: int(i && i.build), ver: (i && i.version) || "" };
+      schedule();
+      if (upd && Date.now() - upd.at < 6 * 3600e3) return;
+      var m = location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i), repo = location.pathname.split("/")[1];
+      if (!m || !repo) return;
+      return fetch("https://api.github.com/repos/" + m[1] + "/" + repo + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (!j || !j.tag_name) return;
+          var apk = (j.assets || []).filter(function (x) { return /\.apk$/i.test(x.name || ""); })[0];
+          upd = { at: Date.now(), build: int(String(j.tag_name).replace(/\D+/g, "")), url: apk ? apk.browser_download_url : j.html_url };
+          lsSet("thuis.upd", upd); schedule();
+        });
+    }).catch(function () {});
+  }
+  function updNew() { return !!(appInfo && appInfo.build && upd && upd.build > appInfo.build); }
+  function updCard(always) {
+    if (!updNew() || (updHide && !always)) return "";
+    return card("", '<div class="agcta"><span class="aemo">✨</span><div><b>Nieuwe versie van de app</b><p class="mut sm">Versie 1.' + upd.build + " staat klaar (jij hebt " + esc(appInfo.ver || "1." + appInfo.build) + "). Je gegevens blijven gewoon bewaard.</p></div></div>" +
+      '<div class="btns"><button class="btn" data-a="updGo">Downloaden en installeren</button>' + (always ? "" : '<button class="btn ghost" data-a="updLater">Later</button>') + "</div>", "attn");
   }
   function agConnect() {
     var Pl = agPlug();
@@ -553,6 +606,7 @@
     tt.forEach(function (x) { x.who.forEach(function (pid) { tot++; var r = doneOf(ds, x.t.id, pid); if (r && r.st === "ok") ok++; }); });
     var s = '<section class="hero"><small>' + cap(fmtLong(ds)) + "</small><h1>" + hi + ", " + esc(m.name) + "</h1><p>" +
       (tot ? ok + " van " + tot + " klusjes klaar vandaag" : "Vandaag staan er geen klusjes") + "</p>" + (tot ? bar(ok / tot, "light") : "") + "</section>";
+    s += updCard(false);
     var ap = approvals();
     if (ap.length) s += card("Wacht op goedkeuring", ap.map(apRow).join("") + (ap.length > 1 ? '<button class="btn wide" data-a="apAll">Alles goedkeuren (' + ap.length + ")</button>" : ""), "attn");
     if (agShared().length) {
@@ -710,6 +764,7 @@
       var p = P(pid), a = obj(D().agenda[pid]);
       return '<span class="wchip">' + av(p, 24) + esc(p.name) + ' <small class="mut">' + ago(a.at) + "</small></span>";
     }).join("") + (mine ? '<button class="lnk" data-a="agConnect">Agenda’s kiezen</button>' : "") + "</div>";
+    if (mine && bgText()) s += '<p class="mut sm agbg">' + esc(bgText()) + "</p>";
     var days = V.agDays, td = today(), items = agItems(td, days), any = false;
     for (var i = 0; i < days; i++) {
       var ds = addD(td, i), l = items[ds];
@@ -753,7 +808,7 @@
         '<div class="btns"><button class="btn" data-a="shareLink">' + ic("share", 18) + ' Koppellink delen</button><button class="btn ghost" data-a="copyLink">Kopiëren</button></div>');
       if (agPlug()) {
         var mine = agCfg && agCfg.pid ? P(agCfg.pid) : null, ag = mine ? obj(obj(D().agenda)[mine.id]) : {};
-        s += card("Agenda op deze telefoon", '<p class="mut">' + (mine ? "Deze telefoon deelt de agenda van <b>" + esc(mine.name) + "</b> (" + (ag.n || 0) + " afspraken, " + (ag.at ? "bijgewerkt " + ago(ag.at) : "nog niet bijgewerkt") + ")." : "Deze telefoon deelt nog geen agenda.") + "</p>" +
+        s += card("Agenda op deze telefoon", '<p class="mut">' + (mine ? "Deze telefoon deelt de agenda van <b>" + esc(mine.name) + "</b> (" + (ag.n || 0) + " afspraken, " + (ag.at ? "bijgewerkt " + ago(ag.at) : "nog niet bijgewerkt") + ")." : "Deze telefoon deelt nog geen agenda.") + "</p>" + (bgText() ? '<p class="mut sm">' + esc(bgText()) + "</p>" : "") +
           '<div class="btns"><button class="btn' + (mine ? " ghost" : "") + '" data-a="agConnect">' + (mine ? "Agenda’s kiezen" : "Agenda koppelen") + "</button>" + (mine ? '<button class="btn ghost" data-a="agSyncNow">Nu bijwerken</button>' : "") + "</div>");
       }
       s += card("Account", '<p class="mut">Ingelogd als <b>' + esc(Store.email) + "</b><br>" + statusHtml() + "</p>" +
@@ -762,6 +817,7 @@
       s += card("Online zetten", '<p class="mut">Je gegevens staan nu alleen op deze telefoon. Met een gezinsaccount (Firebase) zie je alles op elke telefoon in het gezin. Je proefgegevens kun je meenemen.</p><button class="btn" data-a="goCloud">Gezinsaccount maken</button>');
       s += card("Proefgegevens", '<p class="mut">Begin opnieuw met een lege app.</p><button class="btn danger" data-a="wipeLocal">Alles wissen</button>');
     }
+    if (appInfo) s += updCard(true) || card("App", '<p class="mut">Je hebt de nieuwste versie van de app (' + esc(appInfo.ver || "1." + appInfo.build) + ").</p>");
     s += '<p class="mut sm center">Thuis · versie 1.0</p>';
     return s;
   };
@@ -1001,6 +1057,7 @@
     retry: function () { Store.reconnect(); render(true); },
     signOut: function (d, el) {
       if (Store.pending && !sure(el)) { toast(Store.pending + " wijziging(en) zijn nog niet opgeslagen"); return; }
+      bgOff(); agCfg = null; lsSet("thuis.agenda", null);
       lsSet("thuis.who", null); V.who = null; V.acc = "login"; Store.signOut();
     },
     copyRules: function () { copyText(RULES).then(function () { toast("Regels gekopieerd"); }); },
@@ -1153,8 +1210,14 @@
     agStop: function (d, el) {
       if (!sure(el)) return;
       if (agCfg && agCfg.pid) Store.put("agenda/" + agCfg.pid, null);
-      agCfg = null; lsSet("thuis.agenda", null); closeSheet(); toast("Je agenda wordt niet meer gedeeld");
+      bgOff(); agCfg = null; lsSet("thuis.agenda", null); closeSheet(); toast("Je agenda wordt niet meer gedeeld");
     },
+    updGo: function () {
+      if (!upd || !upd.url) return;
+      toast("Open na het downloaden het bestand Thuis.apk om te installeren");
+      setTimeout(function () { location.href = upd.url; }, 400);
+    },
+    updLater: function () { updHide = true; render(); },
     wipeLocal: function (d, el) { if (!sure(el)) return; Store.wipeLocal(); lsSet("thuis.who", null); V.who = null; render(true); }
   };
 
@@ -1339,8 +1402,9 @@
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
   }
   setInterval(function () { if (!gateKey() && sheetEl.hidden) render(); }, 60000);
-  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { maintDone = false; schedule(); } });
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { maintDone = false; schedule(); checkUpdate(); } });
   setInterval(agTick, 15 * 60000);
+  checkUpdate();
   render(true);
   if (window.speechSynthesis && speechSynthesis.getVoices) speechSynthesis.getVoices();
 })();

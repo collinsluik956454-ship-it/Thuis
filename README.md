@@ -21,7 +21,7 @@ Installeren: zie [INSTALLATIE.md](INSTALLATIE.md).
 | `index.html`, `style.css` | De pagina en de vormgeving (licht en donker) |
 | `js/app.js` | Alle schermen en knoppen |
 | `js/sync.js` | Opslag op het toestel en synchronisatie met Firebase (ook offline) |
-| `native/ThuisAgendaPlugin.java` | Android-onderdeel dat de telefoonagenda leest (ook terugkerende afspraken) |
+| `native/*.java` | Android-onderdeel dat de telefoonagenda leest (ook terugkerende afspraken) en op de achtergrond bijwerkt |
 | `firebase-regels.json` | Regels voor de Realtime Database |
 | `.github/workflows/apk.yml` | Bouwt de Android-app (Capacitor) bij elke wijziging |
 | `.github/debug.keystore` | Vaste handtekening, zodat een nieuwe APK over de oude heen installeert |

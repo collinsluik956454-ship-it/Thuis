@@ -42,7 +42,7 @@ Wil je eerst rondkijken? Open de app en kies **Eerst uitproberen op deze telefoo
 2. Ga naar **Releases** (rechts op de voorpagina van de repository) en download **Thuis.apk** op je telefoon.
 3. Open het bestand en sta installeren uit onbekende bronnen toe als je telefoon daarom vraagt.
 
-De APK laadt altijd de nieuwste versie van de website. Voor nieuwe functies hoef je de app dus meestal niet opnieuw te installeren. Uitzondering: voor het koppelen van de agenda (deel 5) heb je APK-versie 1.2 of nieuwer nodig.
+De APK laadt altijd de nieuwste versie van de website. Voor nieuwe functies hoef je de app dus meestal niet opnieuw te installeren. Is er toch een nieuwe APK nodig, dan meldt Thuis dat zelf op het scherm **Vandaag** (en bij Instellingen) met een knop **Downloaden en installeren**. Android vraagt daarna altijd nog even om bevestiging; helemaal ongemerkt installeren kan niet.
 
 ## Deel 5: agenda's van je telefoon koppelen
 
@@ -58,7 +58,9 @@ Mist er een agenda?
 - **Google / Gmail:** Instellingen van je telefoon → Accounts → Google → je account → Account synchroniseren → **Agenda** aan.
 - **OneCalendar:** agenda's die je alleen in OneCalendar hebt toegevoegd, kan Thuis niet lezen. Voeg het e-mailaccount toe zoals hierboven; dan zien OneCalendar en Thuis het allebei.
 
-Thuis leest alleen en verandert niets in je agenda. De afspraken worden bijgewerkt als je de app opent (en elk kwartier terwijl hij openstaat). Bij **Agenda** zie je per persoon wanneer dat het laatst gebeurde. Wil je stoppen? **Instellingen → Agenda op deze telefoon → Agenda's kiezen → Stoppen met delen**.
+Thuis leest alleen en verandert niets in je agenda. Vanaf app-versie 1.3 gaat het bijwerken vanzelf, ook als Thuis dicht is en na het herstarten van je telefoon: ongeveer elk kwartier, en kort nadat er iets in je agenda verandert. Als je telefoon lang stil ligt of in de batterijbesparing staat, kan Android dat wat uitstellen. Bij **Agenda** zie je per persoon wanneer het laatst is bijgewerkt.
+
+Komt het bijwerken op jouw telefoon niet op gang? Zet dan bij Instellingen → Apps → Thuis → Batterij het gebruik op **Onbeperkt** (of: niet optimaliseren). Wil je stoppen? **Instellingen → Agenda op deze telefoon → Agenda's kiezen → Stoppen met delen**.
 
 ## Goed om te weten
 

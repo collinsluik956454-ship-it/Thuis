@@ -409,3 +409,4 @@ button.arow { cursor: pointer; }
 details.help { margin: 16px 0 0; background: var(--bg); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
 details.help summary { font-weight: 650; cursor: pointer; color: var(--acc); }
 details.help p { margin: 8px 0 0; }
+.agbg { margin: -2px 2px 10px; }
