@@ -8,6 +8,7 @@ on:
       - index.html
       - style.css
       - js/**
+      - native/**
       - manifest.webmanifest
       - icon-512.png
       - .github/workflows/apk.yml
@@ -51,16 +52,39 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Voorlezen toestaan (Android 11 en nieuwer)
+      - name: Rechten toevoegen (agenda lezen, voorlezen)
         run: |
           python3 - <<'PY'
           p='android/app/src/main/AndroidManifest.xml'
           s=open(p,encoding='utf-8').read()
+          if 'READ_CALENDAR' not in s:
+              s=s.replace('<application','<uses-permission android:name="android.permission.READ_CALENDAR" />\n\n    <application',1)
           if 'TTS_SERVICE' not in s:
               s=s.replace('<application','<queries>\n        <intent>\n            <action android:name="android.intent.action.TTS_SERVICE" />\n        </intent>\n    </queries>\n\n    <application',1)
           open(p,'w',encoding='utf-8').write(s)
           print('manifest aangepast')
           PY
+
+      - name: Agenda-onderdeel toevoegen (telefoonagenda lezen)
+        run: |
+          D=android/app/src/main/java/nl/collin/thuis
+          test -f "$D/MainActivity.java" || { echo "MainActivity.java niet gevonden"; find android/app/src/main/java; exit 1; }
+          cp native/ThuisAgendaPlugin.java "$D/"
+          cat > "$D/MainActivity.java" <<'JAVA'
+          package nl.collin.thuis;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(ThuisAgendaPlugin.class);
+                  super.onCreate(savedInstanceState);
+              }
+          }
+          JAVA
+          cat "$D/MainActivity.java"
 
       - name: Versienummer ophogen (nodig om over de oude app te installeren)
         run: |

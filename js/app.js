@@ -11,7 +11,7 @@
   var sheetEl = document.getElementById("sheet");
   var toastEl = document.getElementById("toast");
 
-  var V = { who: lsGet("thuis.who", null), tab: "home", ktab: "klus", week: 0, geld: "pot", month: "", gate: "welkom", acc: "nieuw", email: "", pop: "" };
+  var V = { who: lsGet("thuis.who", null), tab: "home", ktab: "klus", week: 0, geld: "pot", month: "", gate: "welkom", acc: "nieuw", email: "", pop: "", ag: "afspraken", agDays: 14 };
 
   /* ---------- vaste lijsten ---------- */
   var COLORS = ["#f6c453", "#f28b82", "#7fc8a9", "#8ab4f8", "#c58af9", "#f9a65a", "#78d6e0", "#f48fb1"];
@@ -44,7 +44,8 @@
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     x: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
     back: '<path d="M19 12H5M11 18l-6-6 6-6"/>',
-    share: '<circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 10.8 7.6-4.1M8.2 13.2l7.6 4.1"/>'
+    share: '<circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 10.8 7.6-4.1M8.2 13.2l7.6 4.1"/>',
+    list: '<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.5 6.5 1.5 1.5 2.5-3M3.5 12l1.5 1.5 2.5-3M3.5 17.5 5 19l2.5-3"/>'
   };
   function ic(n, s) { return '<svg width="' + (s || 22) + '" height="' + (s || 22) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + IC[n] + "</svg>"; }
   var LOGO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 3.6l9 7.6v8.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" fill="#fff"/><path d="m12 9.6 1.35 2.75 3.03.44-2.19 2.14.52 3.02L12 16.52l-2.71 1.43.52-3.02-2.19-2.14 3.03-.44z" fill="var(--acc-on)"/></svg>';
@@ -330,6 +331,7 @@
     }
     lastGate = null;
     maint();
+    agTick();
     var m = me();
     if (!m) renderPicker(); else if (m.role === "kind") renderKid(m); else renderParent(m);
     V.pop = "";
@@ -438,8 +440,100 @@
   function shake() { var el = sheetEl.querySelector(".pinpad"); if (!el) return; el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
   function setWho(id) { V.who = id; lsSet("thuis.who", id); V.tab = "home"; V.ktab = "klus"; render(); window.scrollTo(0, 0); }
 
+  /* ---------- telefoonagenda (alleen in de Android-app) ---------- */
+  var agCfg = lsGet("thuis.agenda", null); // { pid, ids, hash } – welke agenda's deze telefoon deelt
+  var agBusy = false, agLast = 0;
+  function agPlug() { var C = window.Capacitor; return NATIVE && C && C.Plugins && C.Plugins.ThuisAgenda ? C.Plugins.ThuisAgenda : null; }
+  function errText(e) { return String((e && (e.message || e.errorMessage)) || e || "onbekende fout"); }
+  function quickHash(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + s.length; }
+  function agTick() { if (agCfg && agCfg.pid && Date.now() - agLast > 5 * 60000) agSync(false); }
+  function agSync(manual) {
+    var Pl = agPlug();
+    if (!Pl || !agCfg || !agCfg.pid || agBusy || !Store.ready || !P(agCfg.pid)) return;
+    agBusy = true; agLast = Date.now();
+    var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 1);
+    var van = d.getTime(), tot = van + 62 * 864e5;
+    Pl.afspraken({ van: van, tot: tot, agendas: agCfg.ids || [] }).then(function (res) {
+      agBusy = false;
+      var ev = {}, n = 0;
+      (res && res.afspraken || []).forEach(function (a) {
+        if (!a || !a.van || n >= 400) return;
+        var e = { t: String(a.titel || "(geen titel)").slice(0, 120), s: +a.van, e: +a.tot || +a.van };
+        if (a.heleDag) e.d = 1;
+        if (a.plaats) e.l = String(a.plaats).slice(0, 80);
+        ev[String(a.id).replace(/[.#$\[\]\/]/g, "_")] = e; n++;
+      });
+      var hash = quickHash(JSON.stringify(ev)), cur = obj(obj(D().agenda)[agCfg.pid]);
+      if (hash !== agCfg.hash || !cur.at) {
+        Store.put("agenda/" + agCfg.pid, { at: Date.now(), n: n, ev: ev });
+        agCfg.hash = hash; lsSet("thuis.agenda", agCfg);
+      } else if (Date.now() - cur.at > 30 * 60000) Store.put("agenda/" + agCfg.pid + "/at", Date.now());
+      if (manual) toast(n === 1 ? "1 afspraak gedeeld" : n + " afspraken gedeeld");
+    }, function (e) { agBusy = false; if (manual) toast("Agenda lezen lukte niet: " + errText(e)); });
+  }
+  function agConnect() {
+    var Pl = agPlug();
+    if (!Pl) { toast("Agenda koppelen kan alleen in de Android-app"); return; }
+    Pl.toegang().then(function (r) {
+      if (!r || !r.ok) { toast("Geen toegang. Zet ‘Agenda’ aan bij Instellingen → Apps → Thuis → Rechten."); return; }
+      return Pl.agendas().then(function (res) { agForm(res && res.agendas || []); });
+    }).catch(function (e) { toast("Agenda lezen lukte niet: " + errText(e)); });
+  }
+  function agForm(cals) {
+    var m = me(), cur = agCfg && agCfg.ids, skip = /feestdag|holiday|verjaardag|birthday|weeknummer|week number|contact/i, acc = {}, order = [];
+    cals.forEach(function (c) { var k = c.account || "Telefoon"; if (!acc[k]) { acc[k] = []; order.push(k); } acc[k].push(c); });
+    var help = '<details class="help"><summary>Zie je een agenda niet?</summary>' +
+      "<p><b>Outlook / Hotmail:</b> open de Outlook-app → Instellingen → tik op je account → zet <i>Agenda’s synchroniseren</i> aan. Daarna staat de agenda ook op je telefoon.</p>" +
+      "<p><b>Google / Gmail:</b> Instellingen van je telefoon → Accounts → Google → je account → Account synchroniseren → <i>Agenda</i> aan.</p>" +
+      "<p><b>OneCalendar:</b> agenda’s die je alleen in OneCalendar hebt toegevoegd, kan Thuis niet lezen. Voeg het e-mailaccount toe zoals hierboven; dan ziet zowel OneCalendar als Thuis de agenda.</p></details>";
+    openSheet('<form data-f="ag" class="form"><h2>Telefoonagenda delen</h2><p class="mut">Kies welke agenda’s van ' + esc(m ? m.name : "jou") + " het gezin mag zien. De afspraken van de komende 2 maanden komen in Thuis. Thuis leest alleen; het verandert niets in je agenda.</p>" +
+      (cals.length ? order.map(function (k) {
+        return '<div class="lbl">' + esc(k) + '</div><div class="pick col">' + acc[k].map(function (c) {
+          var on = cur ? cur.indexOf(c.id) >= 0 : c.zichtbaar !== false && !skip.test(c.naam || "");
+          return '<label><input type="checkbox" name="ids" value="' + esc(c.id) + '"' + (on ? " checked" : "") + '><span><i class="dot" style="background:' + esc(c.kleur || "#999") + '"></i>' + esc(c.naam || "Agenda") + "</span></label>";
+        }).join("") + "</div>";
+      }).join("") : '<p class="err">Er staan geen agenda’s op deze telefoon.</p>') + help +
+      '<div class="acts"><button class="btn wide">Opslaan en delen</button>' + (agCfg && agCfg.pid ? '<button type="button" class="btn danger" data-a="agStop">Stoppen met delen</button>' : "") + "</div></form>");
+  }
+  function utcYmd(ms) { var d = new Date(ms); return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()); }
+  function hm(ms) { var d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function agShared() { return Object.keys(obj(D().agenda)).filter(function (pid) { return P(pid) && obj(D().agenda[pid]).at; }); }
+  // Afspraken per dag (ds → lijst), samen met de belangrijke datums. Dezelfde afspraak bij beide ouders telt één keer.
+  function agItems(from, days) {
+    var out = {}, end = addD(from, days - 1), seen = {};
+    agShared().forEach(function (pid) {
+      var ev = obj(obj(D().agenda[pid]).ev);
+      Object.keys(ev).forEach(function (k) {
+        var e = ev[k]; if (!e || !e.s) return;
+        var s = e.d ? utcYmd(e.s) : ymd(new Date(e.s)), en = e.d ? utcYmd(Math.max(e.s, (e.e || e.s) - 1)) : s;
+        if (en < from || s > end) return;
+        var key = e.t + "|" + e.s + "|" + e.e, it = seen[key];
+        if (it) { if (it.who.indexOf(pid) < 0) it.who.push(pid); return; }
+        it = seen[key] = { t: e.t, s: e.s, e: e.e || e.s, d: !!e.d, l: e.l || "", who: [pid], sd: s, ed: en };
+        for (var ds = s < from ? from : s; ds <= en && ds <= end; ds = addD(ds, 1)) (out[ds] = out[ds] || []).push(it);
+      });
+    });
+    upcoming(days).forEach(function (x) {
+      if (x.next > end) return;
+      (out[x.next] = out[x.next] || []).push({ t: x.title + (x.age ? " (" + x.age + " jaar)" : ""), d: true, date: true, emoji: x.emoji || "📅", id: x.id, who: [], s: 0 });
+    });
+    Object.keys(out).forEach(function (ds) { out[ds].sort(function (a, b) { return (b.d ? 1 : 0) - (a.d ? 1 : 0) || a.s - b.s; }); });
+    return out;
+  }
+  function agRow(x, ds) {
+    var past = !x.d && x.e < Date.now(), when;
+    if (x.date) when = '<span class="aemo">' + esc(x.emoji) + "</span>";
+    else if (x.d) when = "<b>hele dag</b>";
+    else when = "<b>" + hm(x.s) + "</b>" + (x.e > x.s ? "<small>" + (ymd(new Date(x.e)) === ds ? hm(x.e) : "t/m " + fmtShort(ymd(new Date(x.e)))) + "</small>" : "");
+    var who = x.who.map(P).filter(Boolean), sub = [];
+    if (x.d && !x.date && x.ed > x.sd) sub.push(fmtShort(x.sd) + " t/m " + fmtShort(x.ed));
+    if (x.l) sub.push(x.l);
+    return "<" + (x.date ? 'button data-a="dateEdit" data-id="' + esc(x.id) + '"' : "div") + ' class="arow' + (past ? " past" : "") + '"><span class="atime">' + when + '</span><span class="t"><b>' + esc(x.t) + "</b>" + (sub.length ? "<small>" + esc(sub.join(" · ")) + "</small>" : "") +
+      '</span><span class="awho">' + who.map(function (p) { return av(p, 26); }).join("") + "</span></" + (x.date ? "button" : "div") + ">";
+  }
+
   /* ---------- ouders ---------- */
-  var NAV = [["home", "home", "Vandaag"], ["rooster", "cal", "Rooster"], ["sterren", "star", "Sterren"], ["geld", "coin", "Geld"], ["prik", "pin", "Prikbord"]];
+  var NAV = [["home", "home", "Vandaag"], ["rooster", "list", "Rooster"], ["sterren", "star", "Sterren"], ["geld", "coin", "Geld"], ["agenda", "cal", "Agenda"]];
   function renderParent(m) {
     var n = approvals().length;
     var tab = TABS[V.tab] ? V.tab : "home";
@@ -461,6 +555,11 @@
       (tot ? ok + " van " + tot + " klusjes klaar vandaag" : "Vandaag staan er geen klusjes") + "</p>" + (tot ? bar(ok / tot, "light") : "") + "</section>";
     var ap = approvals();
     if (ap.length) s += card("Wacht op goedkeuring", ap.map(apRow).join("") + (ap.length > 1 ? '<button class="btn wide" data-a="apAll">Alles goedkeuren (' + ap.length + ")</button>" : ""), "attn");
+    if (agShared().length) {
+      var ai = agItems(ds, 2), tm = addD(ds, 1);
+      s += card("Afspraken", (ai[ds] ? ai[ds].map(function (x) { return agRow(x, ds); }).join("") : '<p class="mut sm">Vandaag geen afspraken.</p>') +
+        (ai[tm] ? '<div class="dh">Morgen</div>' + ai[tm].map(function (x) { return agRow(x, tm); }).join("") : ""), "", '<button class="lnk" data-a="agTab" data-k="afspraken">Agenda</button>');
+    }
     if (!kids().length) s += card("Aan de slag", '<p class="mut">Voeg je kinderen toe. Daarna kun je klusjes verdelen en sterren geven.</p><div class="btns"><button class="btn" data-a="profNew" data-r="kind">+ Kind toevoegen</button><button class="btn ghost" data-a="profNew" data-r="ouder">+ Ouder toevoegen</button></div>');
     var rows = personRows(ds);
     s += card("Vandaag", rows || empty("Nog geen klusjes voor vandaag.", '<button class="btn" data-a="taskNew">+ Klusje</button>' + (tasks().length ? "" : '<button class="btn ghost" data-a="starter">Voorbeeldklusjes</button>')), "", '<button class="lnk" data-a="tab" data-t="rooster">Weekrooster</button>');
@@ -469,7 +568,7 @@
       return '<button class="ks" data-a="tab" data-t="sterren">' + av(k, 44) + "<b>" + esc(k.name) + "</b><span>⭐ " + starBal(k.id) + "</span></button>";
     }).join("") + "</div>");
     var up = upcoming(21), pins = list(D().board).filter(function (b) { return b.pin; }).sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
-    if (up.length || pins.length) s += card("Binnenkort", up.map(dateRow).join("") + (pins.length ? '<div class="notes mini">' + pins.map(noteCard).join("") + "</div>" : ""), "", '<button class="lnk" data-a="tab" data-t="prik">Prikbord</button>');
+    if (up.length || pins.length) s += card("Binnenkort", up.map(dateRow).join("") + (pins.length ? '<div class="notes mini">' + pins.map(noteCard).join("") + "</div>" : ""), "", '<button class="lnk" data-a="agTab" data-k="prik">Prikbord</button>');
     return s;
   };
   function apRow(x) {
@@ -596,9 +695,35 @@
     return s;
   }
 
-  TABS.prik = function () {
-    var s = '<div class="toolbar"><h1>Prikbord</h1><div class="btns"><button class="btn sm" data-a="noteEdit">' + ic("plus", 18) + ' Bericht</button><button class="btn sm ghost" data-a="dateEdit">' + ic("plus", 18) + " Datum</button></div></div>";
-    var up = upcoming(400), past = list(D().dates).filter(function (x) { return !x.yearly && x.d && x.d < addD(today(), -1); });
+  TABS.agenda = function () {
+    var prik = V.ag === "prik", Pl = agPlug();
+    var s = '<div class="toolbar"><h1>Agenda</h1>' + (prik ? '<div class="btns"><button class="btn sm" data-a="noteEdit">' + ic("plus", 18) + ' Bericht</button><button class="btn sm ghost" data-a="dateEdit">' + ic("plus", 18) + " Datum</button></div>"
+      : Pl && agCfg && agCfg.pid ? '<button class="btn sm ghost" data-a="agSyncNow">Bijwerken</button>' : "") + "</div>" +
+      '<div class="seg"><button class="' + (prik ? "" : "on") + '" data-a="agTab" data-k="afspraken">📅 Afspraken</button><button class="' + (prik ? "on" : "") + '" data-a="agTab" data-k="prik">📌 Prikbord</button></div>';
+    return s + (prik ? prikBody() : agBody());
+  };
+  function agBody() {
+    var s = "", Pl = agPlug(), shared = agShared(), mine = agCfg && agCfg.pid ? P(agCfg.pid) : null;
+    if (Pl && !mine) s += card("", '<div class="agcta"><span class="aemo">📅</span><div><b>Koppel je telefoonagenda</b><p class="mut sm">Je Google- en Outlook-afspraken komen dan in Thuis, zodat het gezin ze ook ziet. Je kiest zelf welke agenda’s.</p></div></div><button class="btn wide" data-a="agConnect">Agenda koppelen</button>');
+    else if (!Pl && !shared.length) s += card("", '<div class="agcta"><span class="aemo">📱</span><div><b>Agenda’s koppelen</b><p class="mut sm">Dat doe je in de Android-app (Thuis.apk): Agenda → Agenda koppelen. Daarna zie je hier ieders afspraken, ook in de browser.</p></div></div>');
+    if (shared.length) s += '<div class="agwho">' + shared.map(function (pid) {
+      var p = P(pid), a = obj(D().agenda[pid]);
+      return '<span class="wchip">' + av(p, 24) + esc(p.name) + ' <small class="mut">' + ago(a.at) + "</small></span>";
+    }).join("") + (mine ? '<button class="lnk" data-a="agConnect">Agenda’s kiezen</button>' : "") + "</div>";
+    var days = V.agDays, td = today(), items = agItems(td, days), any = false;
+    for (var i = 0; i < days; i++) {
+      var ds = addD(td, i), l = items[ds];
+      if (!l || !l.length) continue;
+      any = true;
+      s += '<section class="card agday' + (i === 0 ? " today" : "") + '"><div class="ch"><h2>' + (i === 0 ? "Vandaag · " : i === 1 ? "Morgen · " : "") + fmtLong(ds) + "</h2></div>" +
+        l.map(function (x) { return agRow(x, ds); }).join("") + "</section>";
+    }
+    if (!any) s += card("", empty(shared.length ? "Geen afspraken in de komende " + days + " dagen." : "Nog geen afspraken. Verjaardagen en andere datums uit het prikbord staan hier ook."));
+    if (days < 60) s += '<p class="center"><button class="btn ghost" data-a="agMore">Meer dagen tonen</button></p>';
+    return s;
+  }
+  function prikBody() {
+    var s = "", up = upcoming(400), past = list(D().dates).filter(function (x) { return !x.yearly && x.d && x.d < addD(today(), -1); });
     s += card("Belangrijke datums", (up.length ? up.map(dateRow).join("") : empty("Zet hier verjaardagen, schoolreisjes en andere belangrijke dagen.", '<button class="btn ghost" data-a="dateEdit">+ Datum</button>')) +
       (past.length ? '<button class="btn ghost wide" data-a="datesClean">' + past.length + " oude datum" + (past.length > 1 ? "s" : "") + " opruimen</button>" : ""));
     var notes = list(D().board).filter(function (b) { return b.text; }).sort(function (a, b) { return (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || (b.at || 0) - (a.at || 0); });
@@ -626,6 +751,11 @@
     if (Store.mode === "cloud") {
       s += card("Telefoon koppelen", '<p class="mut">Stuur deze link naar je partner of open hem op een tablet. Log daarna in met het gezinsaccount <b>' + esc(Store.email) + "</b>.</p>" +
         '<div class="btns"><button class="btn" data-a="shareLink">' + ic("share", 18) + ' Koppellink delen</button><button class="btn ghost" data-a="copyLink">Kopiëren</button></div>');
+      if (agPlug()) {
+        var mine = agCfg && agCfg.pid ? P(agCfg.pid) : null, ag = mine ? obj(obj(D().agenda)[mine.id]) : {};
+        s += card("Agenda op deze telefoon", '<p class="mut">' + (mine ? "Deze telefoon deelt de agenda van <b>" + esc(mine.name) + "</b> (" + (ag.n || 0) + " afspraken, " + (ag.at ? "bijgewerkt " + ago(ag.at) : "nog niet bijgewerkt") + ")." : "Deze telefoon deelt nog geen agenda.") + "</p>" +
+          '<div class="btns"><button class="btn' + (mine ? " ghost" : "") + '" data-a="agConnect">' + (mine ? "Agenda’s kiezen" : "Agenda koppelen") + "</button>" + (mine ? '<button class="btn ghost" data-a="agSyncNow">Nu bijwerken</button>' : "") + "</div>");
+      }
       s += card("Account", '<p class="mut">Ingelogd als <b>' + esc(Store.email) + "</b><br>" + statusHtml() + "</p>" +
         '<div class="btns"><button class="btn ghost" data-a="retry">Opnieuw verbinden</button><button class="btn danger" data-a="signOut">Uitloggen op deze telefoon</button></div>');
     } else {
@@ -1016,6 +1146,15 @@
     },
     copyLink: function () { copyText(linkUrl()).then(function (ok) { toast(ok ? "Link gekopieerd" : "Kopiëren lukte niet"); }); },
     goCloud: function () { V.gate = "cloud"; Store.resetCfg(); render(true); },
+    agTab: function (d) { V.ag = d.k; closeSheet(); go("agenda"); },
+    agMore: function () { V.agDays = 60; render(); },
+    agConnect: function () { agConnect(); },
+    agSyncNow: function () { agSync(true); },
+    agStop: function (d, el) {
+      if (!sure(el)) return;
+      if (agCfg && agCfg.pid) Store.put("agenda/" + agCfg.pid, null);
+      agCfg = null; lsSet("thuis.agenda", null); closeSheet(); toast("Je agenda wordt niet meer gedeeld");
+    },
     wipeLocal: function (d, el) { if (!sure(el)) return; Store.wipeLocal(); lsSet("thuis.who", null); V.who = null; render(true); }
   };
 
@@ -1139,6 +1278,14 @@
       Store.put("dates/" + id, { title: String(fd.get("title")).trim(), emoji: emoVal(fd, "emoji", "📅"), d: fd.get("d"), yearly: !!fd.get("yearly") });
       closeSheet();
     },
+    ag: function (f, fd) {
+      var ids = fd.getAll("ids"), m = me();
+      if (!ids.length) { toast("Kies minstens één agenda"); return; }
+      if (!m || m.role === "kind") return;
+      if (agCfg && agCfg.pid && agCfg.pid !== m.id) Store.put("agenda/" + agCfg.pid, null);
+      agCfg = { pid: m.id, ids: ids }; lsSet("thuis.agenda", agCfg);
+      closeSheet(); agBusy = false; agSync(true);
+    },
     ask: function (f, fd) { var cb = askCb; if (cb && cb(fd.get("v")) === false) return; closeSheet(); }
   };
 
@@ -1193,6 +1340,7 @@
   }
   setInterval(function () { if (!gateKey() && sheetEl.hidden) render(); }, 60000);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { maintDone = false; schedule(); } });
+  setInterval(agTick, 15 * 60000);
   render(true);
   if (window.speechSynthesis && speechSynthesis.getVoices) speechSynthesis.getVoices();
 })();

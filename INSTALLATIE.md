@@ -42,7 +42,23 @@ Wil je eerst rondkijken? Open de app en kies **Eerst uitproberen op deze telefoo
 2. Ga naar **Releases** (rechts op de voorpagina van de repository) en download **Thuis.apk** op je telefoon.
 3. Open het bestand en sta installeren uit onbekende bronnen toe als je telefoon daarom vraagt.
 
-De APK laadt altijd de nieuwste versie van de website. Voor nieuwe functies hoef je de app dus meestal niet opnieuw te installeren.
+De APK laadt altijd de nieuwste versie van de website. Voor nieuwe functies hoef je de app dus meestal niet opnieuw te installeren. Uitzondering: voor het koppelen van de agenda (deel 5) heb je APK-versie 1.2 of nieuwer nodig.
+
+## Deel 5: agenda's van je telefoon koppelen
+
+De agenda's van je e-mailadressen (Gmail, Outlook/Hotmail) staan meestal al in de agenda van je telefoon. Thuis leest die in de Android-app en zet de afspraken van de komende 2 maanden in het gezin, zodat jullie elkaars afspraken zien.
+
+1. Open de Thuis-app (APK) en kies je eigen ouderprofiel.
+2. Ga naar **Agenda → Agenda koppelen** en geef toestemming voor de agenda.
+3. Je ziet je agenda's per e-mailadres. Vink aan welke het gezin mag zien (bijvoorbeeld niet je werkagenda) en kies **Opslaan en delen**.
+4. Je partner doet hetzelfde op de eigen telefoon.
+
+Mist er een agenda?
+- **Outlook / Hotmail:** open de Outlook-app → Instellingen → tik op je account → zet **Agenda's synchroniseren** aan.
+- **Google / Gmail:** Instellingen van je telefoon → Accounts → Google → je account → Account synchroniseren → **Agenda** aan.
+- **OneCalendar:** agenda's die je alleen in OneCalendar hebt toegevoegd, kan Thuis niet lezen. Voeg het e-mailaccount toe zoals hierboven; dan zien OneCalendar en Thuis het allebei.
+
+Thuis leest alleen en verandert niets in je agenda. De afspraken worden bijgewerkt als je de app opent (en elk kwartier terwijl hij openstaat). Bij **Agenda** zie je per persoon wanneer dat het laatst gebeurde. Wil je stoppen? **Instellingen → Agenda op deze telefoon → Agenda's kiezen → Stoppen met delen**.
 
 ## Goed om te weten
 

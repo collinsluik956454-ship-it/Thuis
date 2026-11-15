@@ -380,3 +380,32 @@ div.row { cursor: default; }
   .sheet-panel { bottom: auto; top: 50%; border-radius: 22px; transform: translateY(-40%); opacity: 0; transition: transform .2s, opacity .2s; }
   .sheet.open .sheet-panel { transform: translateY(-50%); opacity: 1; }
 }
+
+/* ---------- agenda ---------- */
+.arow { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 0; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; }
+button.arow { cursor: pointer; }
+.ch + .arow, .dh + .arow, .arow:first-child { border-top: 0; }
+.arow .t { flex: 1; min-width: 0; }
+.arow .t b { display: block; font-weight: 600; overflow-wrap: break-word; }
+.arow .t small { display: block; color: var(--mut); font-size: 13px; }
+.arow.past { opacity: .5; }
+.atime { width: 58px; flex: none; display: flex; flex-direction: column; font-size: 14.5px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.atime small { color: var(--mut); font-size: 12.5px; }
+.atime b { font-weight: 700; }
+.aemo { font-size: 24px; line-height: 1; }
+.awho { display: flex; gap: 2px; flex: none; }
+.agcta { display: flex; gap: 12px; align-items: flex-start; }
+.agcta .aemo { font-size: 30px; }
+.agcta p { margin: 4px 0 0; }
+.agwho { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+.agwho small { font-size: 12px; }
+.agday.today { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc); }
+.pick.col { flex-direction: column; align-items: stretch; }
+.pick.col span { display: flex; align-items: center; gap: 10px; border-radius: 12px; }
+.pick.col input:checked + span { background: var(--acc2); border-color: var(--acc); color: var(--ink); }
+.pick.col span::after { content: ""; margin-left: auto; width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--line); flex: none; }
+.pick.col input:checked + span::after { content: "✓"; background: var(--acc); border-color: var(--acc); color: var(--acc-ink); font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; display: inline-block; }
+details.help { margin: 16px 0 0; background: var(--bg); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+details.help summary { font-weight: 650; cursor: pointer; color: var(--acc); }
+details.help p { margin: 8px 0 0; }
