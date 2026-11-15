@@ -1,0 +1,118 @@
+name: Thuis APK bouwen
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - style.css
+      - js/**
+      - manifest.webmanifest
+      - icon-512.png
+      - .github/workflows/apk.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bouw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Vaste handtekening zetten (zodat updates over de oude app heen kunnen)
+        run: |
+          mkdir -p ~/.android
+          cp .github/debug.keystore ~/.android/debug.keystore
+
+      - name: Web-bestanden klaarzetten
+        run: |
+          mkdir www
+          cp -r index.html style.css js manifest.webmanifest icon-192.png icon-512.png www/
+
+      - name: Android-project maken
+        run: |
+          SITE="https://$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]').github.io/${{ github.event.repository.name }}/"
+          echo "De app laadt: $SITE"
+          npm init -y
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/app@6 @capacitor/share@6 @capacitor-community/text-to-speech@5.1.0
+          npx cap init "Thuis" nl.collin.thuis --web-dir www
+          SITE="$SITE" node -e "const f='capacitor.config.json';const c=JSON.parse(require('fs').readFileSync(f,'utf8'));c.server={url:process.env.SITE,cleartext:false};require('fs').writeFileSync(f,JSON.stringify(c,null,2));console.log(c)"
+          npx cap add android
+          npx cap sync android
+
+      - name: Voorlezen toestaan (Android 11 en nieuwer)
+        run: |
+          python3 - <<'PY'
+          p='android/app/src/main/AndroidManifest.xml'
+          s=open(p,encoding='utf-8').read()
+          if 'TTS_SERVICE' not in s:
+              s=s.replace('<application','<queries>\n        <intent>\n            <action android:name="android.intent.action.TTS_SERVICE" />\n        </intent>\n    </queries>\n\n    <application',1)
+          open(p,'w',encoding='utf-8').write(s)
+          print('manifest aangepast')
+          PY
+
+      - name: Versienummer ophogen (nodig om over de oude app te installeren)
+        run: |
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
+
+      - name: App-icoon maken
+        run: |
+          python3 -m pip install --break-system-packages pillow
+          python3 - <<'PY'
+          from PIL import Image, ImageDraw
+          import math, os
+          res='android/app/src/main/res'
+          dens={'mdpi':1,'hdpi':1.5,'xhdpi':2,'xxhdpi':3,'xxxhdpi':4}
+          acc=(184,74,38,255); white=(255,255,255,255)
+          def house(size, inset, bg=None):
+              S=size*4
+              im=Image.new('RGBA',(S,S),bg or (0,0,0,0)); d=ImageDraw.Draw(im)
+              m=S*inset; w=S-2*m
+              P=lambda x,y:(m+x*w,m+y*w)
+              d.polygon([P(.5,.06),P(.98,.46),P(.86,.46),P(.86,.94),P(.14,.94),P(.14,.46),P(.02,.46)],fill=white)
+              cx,cy=P(.5,.64); R=w*.2; r=R*.45
+              d.polygon([(cx+(R if i%2==0 else r)*math.cos(-math.pi/2+i*math.pi/5),cy+(R if i%2==0 else r)*math.sin(-math.pi/2+i*math.pi/5)) for i in range(10)],fill=acc)
+              return im.resize((size,size),Image.LANCZOS)
+          for n,f in dens.items():
+              d=f'{res}/mipmap-{n}'
+              os.makedirs(d,exist_ok=True)
+              house(int(108*f),0.30).save(f'{d}/ic_launcher_foreground.png')
+              sz=int(48*f)
+              icon=house(sz,0.18,acc)
+              icon.save(f'{d}/ic_launcher.png'); icon.save(f'{d}/ic_launcher_round.png')
+          os.makedirs(f'{res}/values',exist_ok=True)
+          open(f'{res}/values/ic_launcher_background.xml','w').write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#B84A26</color>\n</resources>\n')
+          print('iconen gemaakt')
+          PY
+
+      - name: APK bouwen
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: APK klaarzetten
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Thuis.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Thuis-APK
+          path: Thuis.apk
+
+      - name: Release maken (directe downloadlink)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "apk-${{ github.run_number }}" Thuis.apk --title "Thuis APK ${{ github.run_number }}" --notes "Download Thuis.apk en installeer hem op je telefoon. Versie 1.${{ github.run_number }}."
